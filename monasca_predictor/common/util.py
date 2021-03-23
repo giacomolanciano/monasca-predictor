@@ -2,6 +2,8 @@
     Module containing general utilities
 """
 
+import argparse
+from datetime import datetime
 import logging
 import os
 import sys
@@ -99,4 +101,36 @@ def initialize_logging(logger_name):
     # re-get the log after logging is initialized
     global log
     log = logging.getLogger(__name__)
-    log.propagate = False
+
+
+def format_datetime_str(date_time):
+    return datetime.strftime(date_time, "%Y-%m-%dT%H:%M:%SZ")
+
+
+def get_parsed_args(prog=None):
+    parser = argparse.ArgumentParser(prog=prog)
+    parser.add_argument(
+        "-c", "--clean", action="store_true", default=False, dest="clean"
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        default=False,
+        dest="verbose",
+        help="Print out stacktraces for errors in checks",
+    )
+    parser.add_argument(
+        "-f",
+        "--config-file",
+        default=None,
+        dest="config_file",
+        help="Location for an alternate config rather than "
+        "using the default config location.",
+    )
+
+    # TODO: provide options to add instances/auto-scaling groups details
+
+    options = parser.parse_known_args(sys.argv[1:])
+
+    return options
