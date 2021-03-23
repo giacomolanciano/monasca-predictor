@@ -21,7 +21,7 @@ DEFAULT_LOG_DIR = "/var/log/monasca-predictor"
 @six.add_metaclass(Singleton)
 class PredictorConfig(Config):
     def __init__(self, configFile=None):
-        from monasca_agent.common import util
+        from monasca_predictor.common import util
 
         options, _ = util.get_parsed_args()
         if configFile is not None:
@@ -72,6 +72,7 @@ class PredictorConfig(Config):
                 "use_keystone": True,
                 "keystone_timeout": 20,
                 "keystone_url": "",
+                "api_call_timeout": 10,
                 # NOTE: the following fields are already declared by monasca-agent
                 # "max_buffer_size": 1000,
                 # "max_measurement_buffer_size": -1,
