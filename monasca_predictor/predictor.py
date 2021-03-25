@@ -27,28 +27,26 @@ class PredictorDaemon:
 
     def run(self):
         now = datetime.utcnow()
-        now_str = util.format_datetime_str(now)
+        now_str = util.format_timestamp_str(now)
 
         for instance in instance_list:
             instance_id = instance["id"]
             tenant_id = instance["tenant_id"]
-            start_time = util.format_datetime_str(
+            start_time = util.format_timestamp_str(
                 now - timedelta(minutes=instance["lookback_period_minutes"])
             )
-
-            log.debug("instance id: %s", instance_id)
-            log.debug("tenant id: %s", tenant_id)
-            log.debug("lookback period start: %s", start_time)
 
             # TODO: handle measurements coming from multiple input metrics
             in_metric_list = instance["metrics"]
             for metric in in_metric_list:
                 log.info(
-                    "Requesting '%s' measurements, from %s to %s, for instance '%s' ...",
+                    "Requesting '%s' measurements, from %s to %s, for instance '%s' "
+                    "(tenant '%s') ...",
                     metric,
                     start_time,
                     now_str,
                     instance_id,
+                    tenant_id,
                 )
 
                 measurements = self._api_endpoint.get_measurements(
@@ -61,9 +59,10 @@ class PredictorDaemon:
                 # NOTE: unpack measurements, assuming they come from a single instance
                 measurements = measurements[0]
 
-                log.debug("measurements:")
-                for line in json.dumps(measurements, indent=2).splitlines():
-                    log.debug("%s", line)
+                log.debug(
+                    "Received response containing the following measurements: \n%s",
+                    util.format_object_str(measurements),
+                )
 
             # TODO: feed predictor with measurements
             predictor_value = 0.0
@@ -77,9 +76,10 @@ class PredictorDaemon:
             )
             envelope = out_metric.measurement(predictor_value, predictor_timestamp)
 
-            log.debug("envelope:")
-            for line in json.dumps(envelope, indent=2).splitlines():
-                log.debug("%s", line)
+            log.debug(
+                "The following envelope will be sent to forwarder: \n%s",
+                util.format_object_str(envelope),
+            )
 
             log.info(
                 "Relaying '%s' measurement for instance %s to forwarder ...",
@@ -94,9 +94,10 @@ def main():
     options, args = util.get_parsed_args()
     predictor_config = PredictorConfig().get_config(["Main", "Api", "Logging"])
 
-    log.debug("predictor configs:")
-    for line in json.dumps(predictor_config, indent=2).splitlines():
-        log.debug("%s", line)
+    log.debug(
+        "monasca-predictor started with the following configs: \n%s",
+        util.format_object_str(predictor_config),
+    )
 
     global instance_list
     instance_list = predictor_config["instances"]

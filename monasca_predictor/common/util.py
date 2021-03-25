@@ -3,17 +3,44 @@
 """
 
 import argparse
-from datetime import datetime
+import json
 import logging
 import os
 import sys
 import traceback
+from datetime import datetime
 
 from monasca_predictor.common.config import PredictorConfig
 
 LOGGING_MAX_BYTES = 5 * 1024 * 1024
 
 log = logging.getLogger(__name__)
+
+
+class NewLineFormatter(logging.Formatter):
+    """
+    Custom logging formatter to better handle multi-line messages
+    (inspired by https://stackoverflow.com/q/49049044)
+    """
+
+    def __init__(self, fmt, datefmt=None):
+        """
+        Init given the log line format and date format
+        """
+        logging.Formatter.__init__(self, fmt, datefmt)
+
+    def format(self, record):
+        """
+        Override format function such that it replicates the
+        timestamp/logging-preamble in each line, after every newline.
+        """
+        msg = logging.Formatter.format(self, record)
+
+        if record.message != "":
+            parts = msg.split(record.message)
+            msg = msg.replace("\n", "\n" + parts[0])
+
+        return msg
 
 
 def initialize_logging(logger_name):
@@ -32,7 +59,13 @@ def initialize_logging(logger_name):
         logging.basicConfig(
             format=log_format,
             level=logging_config["log_level"] or logging.INFO,
+            datefmt=log_date_format,
         )
+
+        newline_formatter = NewLineFormatter(log_format, log_date_format)
+
+        root_log = logging.getLogger()
+        root_log.handlers[0].setFormatter(newline_formatter)
 
         # set up file loggers
         log_file = logging_config.get("%s_log_file" % logger_name)
@@ -47,7 +80,7 @@ def initialize_logging(logger_name):
                 else:
                     file_handler = logging.FileHandler(log_file)
 
-                formatter = logging.Formatter(log_format, log_date_format)
+                formatter = NewLineFormatter(log_format, log_date_format)
                 file_handler.setFormatter(formatter)
 
                 root_log = logging.getLogger()
@@ -81,7 +114,8 @@ def initialize_logging(logger_name):
                     address=sys_log_addr,
                     facility=logging.handlers.SysLogHandler.LOG_DAEMON,
                 )
-                handler.setFormatter(logging.Formatter(syslog_format, log_date_format))
+                handler.setFormatter(NewLineFormatter(syslog_format, log_date_format))
+
                 root_log = logging.getLogger()
                 root_log.addHandler(handler)
             except Exception as err:  # pylint: disable=broad-except
@@ -96,6 +130,7 @@ def initialize_logging(logger_name):
         logging.basicConfig(
             format=log_format,
             level=logging.INFO,
+            datefmt=log_date_format,
         )
 
     # re-get the log after logging is initialized
@@ -103,8 +138,12 @@ def initialize_logging(logger_name):
     log = logging.getLogger(__name__)
 
 
-def format_datetime_str(date_time):
-    return datetime.strftime(date_time, "%Y-%m-%dT%H:%M:%SZ")
+def format_timestamp_str(timestamp):
+    return datetime.strftime(timestamp, "%Y-%m-%dT%H:%M:%SZ")
+
+
+def format_object_str(obj):
+    return json.dumps(obj, indent=2)
 
 
 def get_parsed_args(prog=None):
