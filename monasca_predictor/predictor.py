@@ -2,7 +2,6 @@
     monasca-predictor main loop
 """
 
-import json
 import logging
 import sys
 import time
@@ -27,59 +26,50 @@ class PredictorDaemon:
 
     def run(self):
         now = datetime.utcnow()
-        now_str = util.format_timestamp_str(now)
 
         for instance in instance_list:
-            instance_id = instance["id"]
-            tenant_id = instance["tenant_id"]
+            instance_id = instance.get("id")
+            tenant_id = instance.get("tenant_id")
             start_time = util.format_timestamp_str(
-                now - timedelta(minutes=instance["lookback_period_minutes"])
+                now - timedelta(minutes=instance.get("lookback_period_minutes"))
             )
+            group_by = instance.get("group_by")
+            merge_metrics = instance.get("merge_metrics")
+            statistics = instance.get("statistics")
+            aggregation_period_seconds = instance.get("aggregation_period_seconds")
 
             # TODO: handle measurements coming from multiple input metrics
             in_metric_list = instance["metrics"]
             for metric in in_metric_list:
                 log.info(
-                    "Requesting '%s' measurements, from %s to %s, for instance '%s' "
-                    "(tenant '%s') ...",
+                    "Getting '%s' measurements for instance '%s' ...",
                     metric,
-                    start_time,
-                    now_str,
                     instance_id,
-                    tenant_id,
                 )
 
                 measurements = self._api_endpoint.get_measurements(
                     metric=metric,
-                    instance=instance_id,
                     start_time=start_time,
+                    instance=instance_id,
                     tenant=tenant_id,
+                    group_by=group_by,
+                    merge_metrics=merge_metrics,
+                    statistics=statistics,
+                    aggregation_period_seconds=aggregation_period_seconds,
                 )
 
                 # NOTE: unpack measurements, assuming they come from a single instance
                 measurements = measurements[0]
 
                 log.debug(
-                    "Received response containing the following measurements: \n%s",
+                    "Received response containing the following measurements:\n%s",
                     util.format_object_str(measurements),
                 )
 
             # TODO: feed predictor with measurements
+            out_metric_name = f"pred.{in_metric_list[0]}"
             predictor_value = 0.0
             predictor_timestamp = time.time()
-
-            out_metric_name = f"pred.{in_metric_list[0]}"
-            out_metric = metrics.Metric(
-                name=out_metric_name,
-                dimensions=measurements["dimensions"],
-                tenant=tenant_id,
-            )
-            envelope = out_metric.measurement(predictor_value, predictor_timestamp)
-
-            log.debug(
-                "The following envelope will be sent to forwarder: \n%s",
-                util.format_object_str(envelope),
-            )
 
             log.info(
                 "Relaying '%s' measurement for instance %s to forwarder ...",
@@ -87,7 +77,28 @@ class PredictorDaemon:
                 instance_id,
             )
 
-            http_emitter([envelope], log, self._forwarder_endpoint)
+            self._send_to_forwarder(
+                out_metric_name,
+                predictor_value,
+                predictor_timestamp,
+                measurements["dimensions"],
+                tenant_id=tenant_id,
+            )
+
+    def _send_to_forwarder(self, metric_name, value, timestamp, dimensions, tenant_id):
+        out_metric = metrics.Metric(
+            name=metric_name,
+            dimensions=dimensions,
+            tenant=tenant_id,
+        )
+        envelope = out_metric.measurement(value, timestamp)
+
+        log.debug(
+            "The following envelope will be sent to forwarder:\n%s",
+            util.format_object_str(envelope),
+        )
+
+        http_emitter([envelope], log, self._forwarder_endpoint)
 
 
 def main():
@@ -95,7 +106,7 @@ def main():
     predictor_config = PredictorConfig().get_config(["Main", "Api", "Logging"])
 
     log.debug(
-        "monasca-predictor started with the following configs: \n%s",
+        "monasca-predictor started with the following configs:\n%s",
         util.format_object_str(predictor_config),
     )
 
