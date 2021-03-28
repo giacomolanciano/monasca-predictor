@@ -1,14 +1,15 @@
-DEFAULT_LOG_DIR=/var/log/monasca-predictor/
+DEFAULT_LOG_DIR=/var/log/monasca-predictor
+DEFAULT_VENV_DIR=.venv
 
 .PHONY: all log py37
 
 all: py37
 
-log: $(DEFAULT_LOG_DIR)
+log: $(DEFAULT_LOG_DIR)/
 
-py37: .venv/py37/
+py37: $(DEFAULT_VENV_DIR)/py37/
 
-.venv/py37/:
+$(DEFAULT_VENV_DIR)/py37/:
 	python3.7 -m venv $@
 	$@/bin/pip install -U pip
 	$@/bin/pip install -e .
