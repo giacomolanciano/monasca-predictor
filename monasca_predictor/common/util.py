@@ -8,11 +8,17 @@ import logging
 import os
 import sys
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 
 from monasca_predictor.common.config import PredictorConfig
 
 LOGGING_MAX_BYTES = 5 * 1024 * 1024
+
+DEFAULT_TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+SUPPORTED_TIMESTAMP_FORMAT_LIST = [
+    DEFAULT_TIMESTAMP_FORMAT,
+    "%Y-%m-%dT%H:%M:%S.%fZ",
+]
 
 log = logging.getLogger(__name__)
 
@@ -138,8 +144,18 @@ def initialize_logging(logger_name):
     log = logging.getLogger(__name__)
 
 
-def format_timestamp_str(timestamp):
-    return datetime.strftime(timestamp, "%Y-%m-%dT%H:%M:%SZ")
+def format_datetime_str(timestamp):
+    return datetime.strftime(timestamp, DEFAULT_TIMESTAMP_FORMAT)
+
+
+def get_parsed_datetime(timestamp_str, time_zone=timezone.utc):
+    for timestamp_format in SUPPORTED_TIMESTAMP_FORMAT_LIST:
+        try:
+            date_time = datetime.strptime(timestamp_str, timestamp_format)
+            return date_time.replace(tzinfo=time_zone)
+        except ValueError:
+            pass
+    raise ValueError(f"Cannot parse '{timestamp_str}', unsupported datetime format.")
 
 
 def format_object_str(obj):
