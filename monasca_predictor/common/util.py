@@ -74,7 +74,7 @@ def initialize_logging(logger_name):
         root_log.handlers[0].setFormatter(newline_formatter)
 
         # set up file loggers
-        log_file = logging_config.get("%s_log_file" % logger_name)
+        log_file = logging_config.get(f"{logger_name}_log_file")
         if log_file is not None and not logging_config["disable_file_logging"]:
             # make sure the log directory is writable
             # NOTE: the entire directory needs to be writable so that rotation works
@@ -92,7 +92,7 @@ def initialize_logging(logger_name):
                 root_log = logging.getLogger()
                 root_log.addHandler(file_handler)
             else:
-                sys.stderr.write("Log file is unwritable: '%s'\n" % log_file)
+                sys.stderr.write(f"Log file is unwritable: '{log_file}'\n")
 
         # set up syslog
         if logging_config["log_to_syslog"]:
@@ -125,11 +125,11 @@ def initialize_logging(logger_name):
                 root_log = logging.getLogger()
                 root_log.addHandler(handler)
             except Exception as err:  # pylint: disable=broad-except
-                sys.stderr.write("Error setting up syslog: '%s'\n" % str(err))
+                sys.stderr.write(f"Error setting up syslog: '{str(err)}'\n")
                 traceback.print_exc()
 
     except Exception as err:  # pylint: disable=broad-except
-        sys.stderr.write("Couldn't initialize logging: %s\n" % str(err))
+        sys.stderr.write(f"Couldn't initialize logging: {str(err)}\n")
         traceback.print_exc()
 
         # if config fails entirely, enable basic stdout logging as a fallback
