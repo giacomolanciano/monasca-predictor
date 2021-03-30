@@ -1,6 +1,10 @@
 # Config files
 predictor.yaml
 
+# Predictive model dumps
+*.h5
+*.joblib
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
