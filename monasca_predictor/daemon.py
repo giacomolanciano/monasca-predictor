@@ -19,7 +19,7 @@ from monasca_predictor.inference.model import Model
 
 
 log = logging.getLogger(__name__)
-instance_list = []
+prediction_config_list = []
 
 
 class PredictorProcess:
@@ -56,151 +56,202 @@ class PredictorProcess:
         while self.run_forever:
             now = datetime.utcfromtimestamp(inference_start)
 
-            for instance in instance_list:
-                instance_id = instance.get("id")
-                tenant_id = instance.get("tenant_id")
-                lookback_period_seconds = instance.get("lookback_period_seconds")
-                group_by = instance.get("group_by")
-                merge_metrics = instance.get("merge_metrics")
-                statistics = instance.get("statistics")
-                aggregation_period_seconds = instance.get("aggregation_period_seconds")
-                prediction_offset_seconds = instance.get("prediction_offset_seconds")
-
-                in_metric_list = instance.get("metrics")
+            for prediction_id, prediction_config in enumerate(prediction_config_list):
+                in_metric_list = prediction_config.get("metrics")
 
                 if not in_metric_list:
                     log.info(
-                        "No input metrics for instance '%s'. Skipping...",
-                        instance_id,
+                        "No input metrics specified for prediction %d, skipping...",
+                        prediction_id,
                     )
                     continue
+
+                # Get config parameters
+                tenant_id = prediction_config.get("tenant_id")
+                instance_id = prediction_config.get("instance_id")
+                dimensions = prediction_config.get("dimensions")
+
+                lookback_period_seconds = prediction_config.get(
+                    "lookback_period_seconds"
+                )
+                prediction_offset_seconds = prediction_config.get(
+                    "prediction_offset_seconds"
+                )
+
+                statistics = prediction_config.get("statistics")
+                aggregation_period_seconds = prediction_config.get(
+                    "aggregation_period_seconds"
+                )
+
+                group_by = prediction_config.get("group_by")
+                merge_metrics = prediction_config.get("merge_metrics")
 
                 start_time = util.format_datetime_str(
                     now - timedelta(seconds=lookback_period_seconds)
                 )
+                expected_input_shape = (
+                    lookback_period_seconds // aggregation_period_seconds
+                )
+
+                # Fetch measurements (by metric) from Monasca API.
+                #
+                # NOTE: The result of this block is a dict indexed by instance
+                # ID. The value of a single entry is a dict containing a list
+                # of lists of measurements ("measurements") and the dimensions
+                # of the instance ("dimensions").
+                instance_metrics_dict = {}
 
                 for metric in in_metric_list:
                     log.info(
-                        "Getting '%s' measurements for instance '%s'...",
+                        "Getting '%s' measurements for prediction %d...",
                         metric,
-                        instance_id,
+                        prediction_id,
                     )
 
-                    # NOTE: unpack response assuming measurements coming from a
-                    # single instance
                     get_measurement_resp = self._api_endpoint.get_measurements(
                         metric=metric,
                         start_time=start_time,
-                        instance=instance_id,
+                        instance_id=instance_id,
                         tenant=tenant_id,
+                        dimensions=dimensions,
                         group_by=group_by,
                         merge_metrics=merge_metrics,
                         statistics=statistics,
                         aggregation_period_seconds=aggregation_period_seconds,
-                    )[0]
+                    )
 
                     log.debug(
                         "Received the following response:\n%s",
                         util.format_object_str(get_measurement_resp),
                     )
 
-                    if statistics:
-                        measurement_list = get_measurement_resp["statistics"]
-                    else:
-                        measurement_list = get_measurement_resp["measurements"]
+                    for instance in get_measurement_resp:
+                        instance_id = instance["dimensions"]["resource_id"]
 
-                # TODO: handle measurements coming from multiple input metrics.
-                # Currently assuming only one input metric is specified.
+                        if statistics:
+                            measurement_list = instance["statistics"]
+                        else:
+                            measurement_list = instance["measurements"]
 
-                # NOTE: value list must be checked such that it matches the
-                # expected input shape of the model. It could be the case that
-                # the retrieved metrics are too few (because the collection has
-                # just started and the lookeback period is too long) or too
-                # much (because of the effect of cumulative delays in the
-                # collection process).
-                expected_input_shape = (
-                    lookback_period_seconds // aggregation_period_seconds
+                        # NOTE: value list must be checked such that it matches the
+                        # expected input shape of the model. It could be the case that
+                        # the retrieved metrics are too few (because the collection has
+                        # just started and the lookback period is too long) or too
+                        # much (because of the effect of cumulative delays in the
+                        # collection process).
+                        if (
+                            not measurement_list
+                            or len(measurement_list) < expected_input_shape
+                        ):
+
+                            log.info(
+                                "Retrieved measurements are too few "
+                                "(expected: %d, actual: %d). Skipping...",
+                                expected_input_shape,
+                                len(measurement_list),
+                            )
+                            continue
+
+                        elif len(measurement_list) > expected_input_shape:
+
+                            log.info(
+                                "Retrieved measurements are too much, retaining only last %d.",
+                                expected_input_shape,
+                            )
+
+                            measurement_list = measurement_list[-expected_input_shape:]
+
+                        log.debug(
+                            "Value list for metric '%s' of instance '%s' is:\n%s",
+                            metric,
+                            instance_id,
+                            measurement_list,
+                        )
+
+                        # Update instance entry
+                        if instance_metrics_dict.get(instance_id):
+                            instance_metrics_dict[instance_id]["measurements"].append(
+                                measurement_list
+                            )
+                        else:
+                            instance_metrics_dict[instance_id] = {
+                                "dimensions": instance["dimensions"],
+                                "measurements": [measurement_list],
+                            }
+
+                log.debug(
+                    "Retrieve following data from Monasca API:\n%s",
+                    util.format_object_str(instance_metrics_dict),
                 )
-                measurement_value_list = [x[1] for x in measurement_list]
-
-                if (
-                    not measurement_value_list
-                    or len(measurement_value_list) < expected_input_shape
-                ):
-
-                    log.info(
-                        "Retrieved measurements are too few "
-                        "(expected: %d, actual: %d). Skipping...",
-                        expected_input_shape,
-                        len(measurement_value_list),
-                    )
-                    continue
-
-                elif len(measurement_value_list) > expected_input_shape:
-
-                    log.info(
-                        "Retrieved measurements are too much, retaining only last %d.",
-                        expected_input_shape,
-                    )
-
-                    measurement_value_list = measurement_value_list[
-                        -expected_input_shape:
-                    ]
 
                 # Feed predictor with retrieved measurements
                 model = Model()
                 model.load(
-                    model_dump=instance.get("model_path"),
-                    scaler_dump=instance.get("scaler_path"),
-                )
-                prediction_value = model.predict(measurement_value_list)
-
-                # NOTE: associate predictor output with last input measurement
-                # timestamp. Having a temporal relation between the two is
-                # useful for plotting and time-series analysis in general. The
-                # (future) timestamp that the prediction refer to will be
-                # included in the dimensions.
-                #
-                # Consider that, if the *inference* frequency is lower than the
-                # *collection* frequency (30 secs, by default), some predictor
-                # outputs will be overridden, as the last input measurement
-                # timestamp (actually, the whole input) will be the same for
-                # multiple consecutive inference runs. However, setting an
-                # inference frequency that low makes sense only for debugging.
-                last_datetime_str = measurement_list[-1][0]
-                prediction_datetime = util.get_parsed_datetime(last_datetime_str)
-                prediction_timestamp = prediction_datetime.timestamp()
-
-                log.debug("Last input measurement datetime: %s", last_datetime_str)
-                log.debug("Predictor output datetime: %s", str(prediction_datetime))
-                log.debug("Predictor output timestamp: %f", prediction_timestamp)
-
-                # Build predictor output dimensions
-                prediction_dimensions = copy.deepcopy(
-                    get_measurement_resp["dimensions"]
+                    model_dump=prediction_config.get("model_path"),
+                    scaler_dump=prediction_config.get("scaler_path"),
                 )
 
-                prediction_future_datetime = util.format_datetime_str(
-                    prediction_datetime + timedelta(seconds=prediction_offset_seconds)
-                )
-                prediction_dimensions["future_datetime"] = prediction_future_datetime
+                for instance_id, instance_data in instance_metrics_dict.items():
 
-                out_metric_name = f"pred.{in_metric_list[0]}"
+                    # TODO: handle measurements coming from multiple input metrics.
+                    # Currently assuming only one input metric is specified.
+                    measurement_list = instance_data["measurements"][0]
+                    measurement_value_list = [x[1] for x in measurement_list]
+                    prediction_value = model.predict(measurement_value_list)
 
-                log.info(
-                    "Sending '%s' measurement for instance '%s' to forwarder...",
-                    out_metric_name,
-                    instance_id,
-                )
+                    # NOTE: associate predictor output with last input measurement
+                    # timestamp. Having a temporal relation between the two is
+                    # useful for plotting and time-series analysis in general. The
+                    # (future) timestamp that the prediction refer to will be
+                    # included in the dimensions.
+                    #
+                    # Consider that, if the *inference* frequency is lower than the
+                    # *collection* frequency (30 secs, by default), some predictor
+                    # outputs will be overridden, as the last input measurement
+                    # timestamp (actually, the whole input) will be the same for
+                    # multiple consecutive inference runs. However, setting an
+                    # inference frequency that low makes sense only for debugging.
+                    last_datetime_str = measurement_list[-1][0]
+                    prediction_datetime = util.get_parsed_datetime(last_datetime_str)
+                    prediction_timestamp = prediction_datetime.timestamp()
 
-                self._send_to_forwarder(
-                    out_metric_name,
-                    prediction_value,
-                    prediction_timestamp,
-                    prediction_dimensions,
-                    tenant_id=tenant_id,
-                    forwarder_endpoint=config["forwarder_url"],
-                )
+                    log.debug("Last input measurement datetime: %s", last_datetime_str)
+                    log.debug("Predictor output datetime: %s", str(prediction_datetime))
+                    log.debug("Predictor output timestamp: %f", prediction_timestamp)
+
+                    # Build predictor output dimensions
+                    prediction_dimensions = copy.deepcopy(instance_data["dimensions"])
+
+                    # TODO restore future timestamp
+                    # When providing future_timestamp as additional dimension,
+                    # Monasca seems not to be able to understand that the
+                    # measurements belong to the same metric. This behavior
+                    # makes impossible to use the predicted metric for
+                    # autoscaling purposes
+                    #
+                    # prediction_future_datetime =
+                    # util.format_datetime_str(prediction_datetime +
+                    # timedelta(seconds=prediction_offset_seconds)
+                    # )
+                    # prediction_dimensions["future_timestamp"] =
+                    #     prediction_future_datetime
+
+                    out_metric_name = f"pred.{in_metric_list[0]}"
+
+                    log.info(
+                        "Sending '%s' measurement for instance '%s' to forwarder...",
+                        out_metric_name,
+                        instance_id,
+                    )
+
+                    self._send_to_forwarder(
+                        out_metric_name,
+                        prediction_value,
+                        prediction_timestamp,
+                        prediction_dimensions,
+                        tenant_id=tenant_id,
+                        forwarder_endpoint=config["forwarder_url"],
+                    )
 
             # Only plan for the next loop if we will continue,
             # otherwise just exit quickly.
@@ -251,8 +302,8 @@ def main():
         util.format_object_str(predictor_config),
     )
 
-    global instance_list
-    instance_list = predictor_config["instances"]
+    global prediction_config_list
+    prediction_config_list = predictor_config["predictions"]
 
     predictor = PredictorProcess()
     predictor.run(predictor_config)

@@ -32,8 +32,9 @@ class MonascaAPI(object):
         self,
         metric,
         start_time,
-        instance,
         tenant,
+        instance_id=None,
+        dimensions=None,
         group_by=None,
         merge_metrics=None,
         statistics=None,
@@ -48,14 +49,18 @@ class MonascaAPI(object):
 
         # NOTE: params name must match the one expected by Monasca API
         kwargs = {
-            "dimensions": {
-                "resource_id": instance,
-            },
+            "dimensions": {},
             "name": metric,
             "start_time": start_time,
             "tenant_id": tenant,
             "merge_metrics": merge_metrics or False,
         }
+
+        if instance_id:
+            kwargs["dimensions"]["resource_id"] = instance_id
+
+        if dimensions:
+            kwargs["dimensions"].update(dimensions)
 
         if group_by:
             kwargs["group_by"] = group_by
