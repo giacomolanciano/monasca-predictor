@@ -13,9 +13,9 @@ import monasca_agent.common.metrics as metrics
 from monasca_agent.common.emitter import http_emitter
 
 import monasca_predictor.common.util as util
+import monasca_predictor.inference.model as inf_mod
 from monasca_predictor.api.monasca_api import MonascaAPI
 from monasca_predictor.common.config import PredictorConfig
-from monasca_predictor.inference.model import Model
 
 
 log = logging.getLogger(__name__)
@@ -185,11 +185,17 @@ class PredictorProcess:
                 )
 
                 # Feed predictor with retrieved measurements
-                model = Model()
-                model.load(
-                    model_dump=prediction_config.get("model_path"),
-                    scaler_dump=prediction_config.get("scaler_path"),
-                )
+                model_type = prediction_config.get("model_type")
+                if model_type and model_type == "linear":
+                    model = inf_mod.LinearModel(
+                        prediction_offset_seconds / aggregation_period_seconds
+                    )
+                else:
+                    model = inf_mod.Model()
+                    model.load(
+                        model_dump=prediction_config.get("model_path"),
+                        scaler_dump=prediction_config.get("scaler_path"),
+                    )
 
                 for instance_id, instance_data in instance_metrics_dict.items():
 

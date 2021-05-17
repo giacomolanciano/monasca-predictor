@@ -4,6 +4,7 @@ import pathlib
 import numpy as np
 import tensorflow as tf
 import joblib
+from sklearn.linear_model import LinearRegression
 
 log = logging.getLogger(__name__)
 
@@ -65,3 +66,25 @@ class Model:
 
         # NOTE: assuming the expected output of the model is a single value
         return float(self._scaler.inverse_transform(y_scaled).flatten())
+
+
+class LinearModel(Model):
+    def __init__(self, prediction_offset):
+        super().__init__()
+        self._prediction_offset = prediction_offset
+
+    def predict(self, x):
+        if not isinstance(x, np.ndarray):
+            log.debug("Input is of type '%s', converting to 'numpy.ndarray'.", type(x))
+            x = np.array(x)
+
+        # fit a linear model on input samples to get the trend
+        time_steps = np.arange(0, len(x))
+        self._model = LinearRegression().fit(time_steps.reshape(-1, 1), x)
+
+        y = self._model.predict(np.array([[time_steps[-1] + self._prediction_offset]]))
+
+        log.debug("y (shape=%s):\n%s", str(y.shape), str(y))
+
+        # NOTE: assuming the expected output of the model is a single value
+        return float(y.flatten())
