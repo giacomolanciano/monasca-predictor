@@ -9,6 +9,8 @@ import sys
 import time
 from datetime import timedelta, datetime
 
+import pandas as pd
+
 import monasca_agent.common.metrics as metrics
 from monasca_agent.common.emitter import http_emitter
 
@@ -78,29 +80,30 @@ class PredictorProcess:
                     "prediction_offset_seconds"
                 )
 
-                statistics = prediction_config.get("statistics")
-                aggregation_period_seconds = prediction_config.get(
-                    "aggregation_period_seconds"
+                time_aggregation_statistics = prediction_config.get(
+                    "time_aggregation_statistics"
+                )
+                time_aggregation_period_seconds = prediction_config.get(
+                    "time_aggregation_period_seconds"
+                )
+                space_aggregation_statistics = prediction_config.get(
+                    "space_aggregation_statistics"
                 )
 
                 group_by = prediction_config.get("group_by")
                 merge_metrics = prediction_config.get("merge_metrics")
 
+                out_metric_name = prediction_config.get("out_metric")
+
                 start_time = util.format_datetime_str(
                     now - timedelta(seconds=lookback_period_seconds)
                 )
                 expected_input_shape = (
-                    lookback_period_seconds // aggregation_period_seconds
+                    lookback_period_seconds // time_aggregation_period_seconds
                 )
 
                 # Fetch measurements (by metric) from Monasca API.
-                #
-                # NOTE: The result of this block is a dict indexed by instance
-                # ID. The value of a single entry is a dict containing a list
-                # of lists of measurements ("measurements") and the dimensions
-                # of the instance ("dimensions").
-                instance_metrics_dict = {}
-
+                metrics_df = pd.DataFrame()
                 for metric in in_metric_list:
                     log.info(
                         "Getting '%s' measurements for prediction %d...",
@@ -116,8 +119,8 @@ class PredictorProcess:
                         dimensions=dimensions,
                         group_by=group_by,
                         merge_metrics=merge_metrics,
-                        statistics=statistics,
-                        aggregation_period_seconds=aggregation_period_seconds,
+                        statistics=time_aggregation_statistics,
+                        aggregation_period_seconds=time_aggregation_period_seconds,
                     )
 
                     log.debug(
@@ -127,8 +130,9 @@ class PredictorProcess:
 
                     for instance in get_measurement_resp:
                         instance_id = instance["dimensions"]["resource_id"]
+                        instance_data = copy.deepcopy(instance["dimensions"])
 
-                        if statistics:
+                        if time_aggregation_statistics:
                             measurement_list = instance["statistics"]
                         else:
                             measurement_list = instance["measurements"]
@@ -168,27 +172,33 @@ class PredictorProcess:
                             measurement_list,
                         )
 
-                        # Update instance entry
-                        if instance_metrics_dict.get(instance_id):
-                            instance_metrics_dict[instance_id]["measurements"].append(
-                                measurement_list
+                        for measurement in measurement_list:
+                            instance_data["timestamp"] = measurement[0]
+                            instance_data[metric] = measurement[1]
+                            metrics_df = metrics_df.append(
+                                instance_data, ignore_index=True
                             )
-                        else:
-                            instance_metrics_dict[instance_id] = {
-                                "dimensions": instance["dimensions"],
-                                "measurements": [measurement_list],
-                            }
+
+                if metrics_df.empty:
+                    log.debug("Not enough data available, skipping...")
+                    continue
+
+                # cast index to DateTimeIndex
+                metrics_df.set_index(["timestamp"], inplace=True)
+                metrics_df.index = pd.to_datetime(
+                    metrics_df.index, format=util.DEFAULT_TIMESTAMP_FORMAT
+                )
 
                 log.debug(
-                    "Retrieve following data from Monasca API:\n%s",
-                    util.format_object_str(instance_metrics_dict),
+                    "Retrieved following data from Monasca API:\n%s",
+                    str(metrics_df),
                 )
 
                 # Feed predictor with retrieved measurements
                 model_type = prediction_config.get("model_type")
                 if model_type and model_type == "linear":
                     model = inf_mod.LinearModel(
-                        prediction_offset_seconds / aggregation_period_seconds
+                        prediction_offset_seconds / time_aggregation_period_seconds
                     )
                 else:
                     model = inf_mod.Model()
@@ -197,57 +207,87 @@ class PredictorProcess:
                         scaler_dump=prediction_config.get("scaler_path"),
                     )
 
-                for instance_id, instance_data in instance_metrics_dict.items():
-
+                # NOTE: associate predictor output with last input measurement
+                # timestamp. Having a temporal relation between the two is
+                # useful for plotting and time-series analysis in general. The
+                # (future) timestamp that the prediction refer to will be
+                # included in the dimensions.
+                #
+                # Consider that, if the *inference* frequency is lower than the
+                # *collection* frequency (30 secs, by default), some predictor
+                # outputs will be overridden, as the last input measurement
+                # timestamp (actually, the whole input) will be the same for
+                # multiple consecutive inference runs. However, setting an
+                # inference frequency that low makes sense only for debugging.
+                if space_aggregation_statistics:
                     # TODO: handle measurements coming from multiple input metrics.
                     # Currently assuming only one input metric is specified.
-                    measurement_list = instance_data["measurements"][0]
-                    measurement_value_list = [x[1] for x in measurement_list]
-                    prediction_value = model.predict(measurement_value_list)
+                    table = pd.pivot_table(
+                        metrics_df,
+                        values=in_metric_list[0],
+                        index=["timestamp"],
+                        columns=["hostname"],
+                    )
+                    raw_data_cols = list(table.columns)
 
-                    # NOTE: associate predictor output with last input measurement
-                    # timestamp. Having a temporal relation between the two is
-                    # useful for plotting and time-series analysis in general. The
-                    # (future) timestamp that the prediction refer to will be
-                    # included in the dimensions.
-                    #
-                    # Consider that, if the *inference* frequency is lower than the
-                    # *collection* frequency (30 secs, by default), some predictor
-                    # outputs will be overridden, as the last input measurement
-                    # timestamp (actually, the whole input) will be the same for
-                    # multiple consecutive inference runs. However, setting an
-                    # inference frequency that low makes sense only for debugging.
-                    last_datetime_str = measurement_list[-1][0]
-                    prediction_datetime = util.get_parsed_datetime(last_datetime_str)
-                    prediction_timestamp = prediction_datetime.timestamp()
+                    log.debug("raw_data_cols: %s", str(raw_data_cols))
+                    log.debug("pivot table:\n%s", str(table))
 
-                    log.debug("Last input measurement datetime: %s", last_datetime_str)
-                    log.debug("Predictor output datetime: %s", str(prediction_datetime))
+                    # NOTE: assuming that, if the table contains more rows than
+                    # the expected number of input samples, there is a
+                    # time-shift among the individual traces of the involved
+                    # nodes. In that case, fill NaNs with the value of the
+                    # previous sample and retain the expected number of
+                    # (newest) samples only.
+                    if table.shape[0] > expected_input_shape:
+                        table = table.fillna(method="ffill", axis=0).iloc[
+                            -expected_input_shape:, :
+                        ]
+
+                        log.debug("NaN-free pivot table:\n%s", str(table))
+
+                    # compute spatial statistics
+                    table["count"] = table[raw_data_cols].count(axis=1)
+                    for stat in space_aggregation_statistics:
+                        if stat == "avg":
+                            table["avg"] = (
+                                table[raw_data_cols].sum(axis=1) / table["count"]
+                            )
+                        elif stat == "sum":
+                            table["sum"] = table[raw_data_cols].sum(axis=1)
+
+                    log.debug("augmented pivot table:\n%s", str(table))
+
+                    predictor_input = table[space_aggregation_statistics].values
+
+                    log.debug("predictor input:\n%s", str(predictor_input))
+
+                    prediction_value_raw = model.predict(predictor_input)
+                    node_count = table["count"][-1]
+                    prediction_value = prediction_value_raw / node_count
+
+                    log.debug("prediction_value_raw: %s", str(prediction_value_raw))
+                    log.debug("node_count: %s", str(node_count))
+                    log.debug("prediction_value: %s", str(prediction_value))
+
+                    last_datetime = table.index[-1]
+                    prediction_timestamp = last_datetime.timestamp()
+
+                    log.debug("Last input measurement datetime: %s", last_datetime)
                     log.debug("Predictor output timestamp: %f", prediction_timestamp)
 
                     # Build predictor output dimensions
-                    prediction_dimensions = copy.deepcopy(instance_data["dimensions"])
+                    prediction_dimensions = copy.deepcopy(dimensions)
+                    prediction_dimensions["component"] = "cluster"
 
-                    # TODO restore future timestamp
-                    # When providing future_timestamp as additional dimension,
-                    # Monasca seems not to be able to understand that the
-                    # measurements belong to the same metric. This behavior
-                    # makes impossible to use the predicted metric for
-                    # autoscaling purposes
-                    #
-                    # prediction_future_datetime =
-                    # util.format_datetime_str(prediction_datetime +
-                    # timedelta(seconds=prediction_offset_seconds)
-                    # )
-                    # prediction_dimensions["future_timestamp"] =
-                    #     prediction_future_datetime
-
-                    out_metric_name = f"pred.{in_metric_list[0]}"
+                    log.debug(
+                        "prediction dimensions:\n%s",
+                        util.format_object_str(prediction_dimensions),
+                    )
 
                     log.info(
-                        "Sending '%s' measurement for instance '%s' to forwarder...",
+                        "Sending '%s' measurement to forwarder...",
                         out_metric_name,
-                        instance_id,
                     )
 
                     self._send_to_forwarder(
@@ -258,6 +298,51 @@ class PredictorProcess:
                         tenant_id=tenant_id,
                         forwarder_endpoint=config["forwarder_url"],
                     )
+                else:
+                    for instance_id, instance_data in metrics_df.groupby("resource_id"):
+                        # TODO: handle measurements coming from multiple input metrics.
+                        # Currently assuming only one input metric is specified.
+                        prediction_value = model.predict(
+                            instance_data[in_metric_list[0]].values
+                        )
+
+                        last_datetime = instance_data.index[-1]
+                        prediction_timestamp = last_datetime.timestamp()
+
+                        log.debug("Last input measurement datetime: %s", last_datetime)
+                        log.debug(
+                            "Predictor output timestamp: %f", prediction_timestamp
+                        )
+
+                        # Build predictor output dimensions
+                        prediction_dimensions = dict(
+                            instance_data[
+                                instance_data.columns.difference(in_metric_list)
+                            ].iloc[0, :]
+                        )
+
+                        log.debug(
+                            "prediction dimensions:\n%s",
+                            util.format_object_str(prediction_dimensions),
+                        )
+
+                        if not out_metric_name:
+                            out_metric_name = f"pred.{in_metric_list[0]}"
+
+                        log.info(
+                            "Sending '%s' measurement for instance '%s' to forwarder...",
+                            out_metric_name,
+                            instance_id,
+                        )
+
+                        self._send_to_forwarder(
+                            out_metric_name,
+                            prediction_value,
+                            prediction_timestamp,
+                            prediction_dimensions,
+                            tenant_id=tenant_id,
+                            forwarder_endpoint=config["forwarder_url"],
+                        )
 
             # Only plan for the next loop if we will continue,
             # otherwise just exit quickly.

@@ -18,6 +18,7 @@ DEFAULT_TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 SUPPORTED_TIMESTAMP_FORMAT_LIST = [
     DEFAULT_TIMESTAMP_FORMAT,
     "%Y-%m-%dT%H:%M:%S.%fZ",
+    "%Y-%m-%d %H:%M:%S",
 ]
 
 log = logging.getLogger(__name__)
