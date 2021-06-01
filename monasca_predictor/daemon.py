@@ -143,27 +143,51 @@ class PredictorProcess:
                         # just started and the lookback period is too long) or too
                         # much (because of the effect of cumulative delays in the
                         # collection process).
-                        if (
-                            not measurement_list
-                            or len(measurement_list) < expected_input_shape
-                        ):
-
+                        if not measurement_list:
                             log.info(
-                                "Retrieved measurements are too few "
-                                "(expected: %d, actual: %d). Skipping...",
-                                expected_input_shape,
-                                len(measurement_list),
+                                "No measurements were retrieved for instance '%s'. "
+                                "Skipping...",
+                                instance_id,
                             )
                             continue
 
                         elif len(measurement_list) > expected_input_shape:
-
                             log.info(
-                                "Retrieved measurements are too much, retaining only last %d.",
+                                "Retrieved measurements for instance '%s' are more than expected"
+                                "(expected: %d, actual: %d). Retaining newest only...",
+                                instance_id,
                                 expected_input_shape,
+                                len(measurement_list),
                             )
 
                             measurement_list = measurement_list[-expected_input_shape:]
+
+                        elif len(measurement_list) < expected_input_shape:
+                            # NOTE: In case of spatially-aggregated
+                            # predictions, retain measurements even though they
+                            # are not as much as expected. This is to avoid
+                            # feeding the predictor with inconsistent data.
+                            # E.g., the count metric would not take into
+                            # account the nodes that failed to match the
+                            # expected shape; the predictor would infer the
+                            # target metric based on incomplete info; the
+                            # rescaling would be done on fewer nodes than those
+                            # that are actually running.
+                            log.info(
+                                "Retrieved measurements for instance '%s' are fewer than expected"
+                                "(expected: %d, actual: %d).",
+                                instance_id,
+                                expected_input_shape,
+                                len(measurement_list),
+                            )
+
+                            if not space_aggregation_statistics:
+                                log.info(
+                                    "Instance '%s' will not be considered for "
+                                    "prediction in this round.",
+                                    instance_id,
+                                )
+                                continue
 
                         log.debug(
                             "Value list for metric '%s' of instance '%s' is:\n%s",
