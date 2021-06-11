@@ -1,8 +1,12 @@
 # Config files
 predictor.yaml
 
+# Log files
+*.log*
+
 # Predictive model dumps
 *.h5
+*.pt
 *.joblib
 
 # Byte-compiled / optimized / DLL files
