@@ -59,6 +59,7 @@ class PredictorProcess:
             now = datetime.utcfromtimestamp(inference_start)
 
             for prediction_id, prediction_config in enumerate(prediction_config_list):
+                total_overhead_start = time.time()
                 in_metric_list = prediction_config.get("metrics")
 
                 if not in_metric_list:
@@ -203,6 +204,7 @@ class PredictorProcess:
                                 instance_data, ignore_index=True
                             )
 
+                processing_overhead_start = time.time()
                 if metrics_df.empty:
                     log.debug("Not enough data available, skipping...")
                     continue
@@ -257,18 +259,32 @@ class PredictorProcess:
                     log.debug("raw_data_cols: %s", str(raw_data_cols))
                     log.debug("pivot table:\n%s", str(table))
 
-                    # NOTE: assuming that, if the table contains more rows than
-                    # the expected number of input samples, there is a
-                    # time-shift among the individual traces of the involved
-                    # nodes. In that case, fill NaNs with the value of the
-                    # previous sample and retain the expected number of
-                    # (newest) samples only.
                     if table.shape[0] > expected_input_shape:
+                        # NOTE: assuming that, if the table contains more rows
+                        # than the expected number of input samples, there is a
+                        # time-shift among the individual traces of the involved
+                        # nodes. In that case, fill NaNs with the value of the
+                        # previous sample and retain the expected number of
+                        # (newest) samples only.
                         table = table.fillna(method="ffill", axis=0).iloc[
                             -expected_input_shape:, :
                         ]
 
                         log.debug("NaN-free pivot table:\n%s", str(table))
+                    elif table.shape[0] < expected_input_shape:
+                        # NOTE: if the table contains less rows than expected,
+                        # then replicate the oldest measure to cover the
+                        # difference.
+                        difference = table.shape[0] - expected_input_shape
+                        new_row = table.iloc[0].copy()
+                        new_row.name = pd.to_datetime(new_row.name) - timedelta(
+                            minutes=1
+                        )
+                        table = pd.concat(
+                            [pd.DataFrame(new_row).transpose()] * difference + [table]
+                        )
+
+                        log.debug("filled pivot table:\n%s", str(table))
 
                     # compute spatial statistics
                     table["count"] = table[raw_data_cols].count(axis=1)
@@ -367,6 +383,16 @@ class PredictorProcess:
                             tenant_id=tenant_id,
                             forwarder_endpoint=config["forwarder_url"],
                         )
+
+                total_overhead_end = time.time()
+                total_overhead_elapsed_time = total_overhead_end - total_overhead_start
+                processing_overhead_elapsed_time = (
+                    total_overhead_end - processing_overhead_start
+                )
+                log.debug("Total overhead [sec]: %s", total_overhead_elapsed_time)
+                log.debug(
+                    "Processing overhead [sec]: %s", processing_overhead_elapsed_time
+                )
 
             # Only plan for the next loop if we will continue,
             # otherwise just exit quickly.
