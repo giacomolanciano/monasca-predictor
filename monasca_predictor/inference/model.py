@@ -25,7 +25,10 @@ class Model:
             self._model = tf.keras.models.load_model(model_dump)
         if self._model_dump_path.suffix == ".pt":
             # TODO: drop assumptions on underlying model.
-            self._model = Model.RNN(2, 30, 1)
+            if "_rnn_" in str(self._model_dump_path):
+                self._model = Model.RNN(1, 200, 1, 3)
+            elif "_mlp_" in str(self._model_dump_path):
+                self._model = Model.MLP(20, [10, 10], 1)
             self._model.load_state_dict(torch.load(model_dump))
             self._model.eval()
         elif self._model_dump_path.suffix == ".joblib":
@@ -64,12 +67,14 @@ class Model:
         log.debug("x_scaled (shape=%s):\n%s", str(x_scaled.shape), str(x_scaled))
 
         if self._model_dump_path.suffix == ".pt":
-            hidden = self._model.init_hidden()
-            for i in range(x_length):
-                hidden, y_scaled = self._model(
-                    torch.tensor(x_scaled[i], dtype=torch.float32), hidden
-                )
-            y_scaled = y_scaled.detach().numpy()
+            if "_rnn_" in str(self._model_dump_path):
+                a = torch.tensor(x_scaled, dtype=torch.float32).unsqueeze(1)
+                h0 = self._model.init_hidden(1)
+                y_scaled, _ = self._model(a, h0)
+                y_scaled = y_scaled.detach().numpy().reshape(-1, 1)
+            elif "_mlp_" in str(self._model_dump_path):
+                y_scaled = self._model(torch.tensor(x_scaled, dtype=torch.float32).T)
+                y_scaled = y_scaled.detach().numpy().reshape(-1, 1)
         else:
             # TODO: drop assumptions on underlying model input shape.
             # Currently assuming the underlying model is an LSTM expecting 3D
@@ -97,29 +102,49 @@ class Model:
         return float(self._scaler.inverse_transform(y_scaled).flatten())
 
     class RNN(nn.Module):
-        def __init__(self, in_size, hidden_size, out_size):
+        def __init__(self, in_size, hidden_size, out_size, layers):
             super(Model.RNN, self).__init__()
             self.input_size = in_size
             self.hidden_size = hidden_size
             self.output_size = out_size
-            self.i2h = nn.Linear(self.input_size + self.hidden_size, self.hidden_size)
-            self.h2h = nn.LeakyReLU()
-            self.i2o = nn.Linear(self.input_size + self.hidden_size, self.output_size)
+            self.layers = layers
+            self.rnn = nn.RNN(
+                input_size=self.input_size,
+                hidden_size=self.hidden_size,
+                num_layers=self.layers,
+                batch_first=False,
+                nonlinearity="relu",
+            )
+            self.lin = nn.Linear(self.hidden_size, self.output_size)
 
-        def forward(self, x, hidden):
-            x = torch.unsqueeze(x, dim=1)
-            # print(x.size())
-            # print(hidden.size())
-            concat = torch.cat((hidden, x), 0)
-            # print(concat.size())
-            # print(self.i2h)
-            hidden = self.i2h(concat.T).T
-            hidden = self.h2h(hidden)
-            output = self.i2o(concat.T)
-            return hidden, output
+        def forward(self, seq, hidden):
+            output, _ = self.rnn(seq, hidden)
+            output = self.lin(output[-1:])
+            return output, hidden
 
-        def init_hidden(self):
-            return torch.zeros(self.hidden_size, 1)
+        def init_hidden(self, batch_size):
+            return torch.zeros(self.layers, batch_size, self.hidden_size)
+
+    class MLP(nn.Module):
+        def __init__(self, in_size: int, hidden_size: list, output_size: int):
+            super(Model.MLP, self).__init__()
+            self.input_size = in_size
+            self.hidden_size = hidden_size
+            self.output_size = output_size
+            self.dimensions = [self.input_size] + self.hidden_size + [self.output_size]
+            self.stack = []
+            for idx in range(len(self.dimensions) - 1):
+                self.stack.append(
+                    nn.Linear(self.dimensions[idx], self.dimensions[idx + 1])
+                )
+                self.stack.append(nn.LeakyReLU())
+            self.stack = nn.ModuleList(self.stack)
+
+        def forward(self, x):
+            signal = x
+            for idx, processing in enumerate(self.stack):
+                signal = processing(signal)
+            return signal
 
 
 class LinearModel(Model):
