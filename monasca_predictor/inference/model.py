@@ -25,10 +25,14 @@ class Model:
             self._model = tf.keras.models.load_model(model_dump)
         if self._model_dump_path.suffix == ".pt":
             # TODO: drop assumptions on underlying model.
-            if "_rnn_" in str(self._model_dump_path):
+            if "rnn" in str(self._model_dump_path):
                 self._model = Model.RNN(1, 200, 1, 3)
-            elif "_mlp_" in str(self._model_dump_path):
-                self._model = Model.MLP(20, [10, 10], 1)
+            elif "mlp" in str(self._model_dump_path):
+                self._model = Model.MLP(
+                    int(self._model_dump_path.name.split("_")[0].split("-")[1]),
+                    [10, 10],
+                    1,
+                )
             self._model.load_state_dict(torch.load(model_dump))
             self._model.eval()
         elif self._model_dump_path.suffix == ".joblib":
@@ -67,12 +71,12 @@ class Model:
         log.debug("x_scaled (shape=%s):\n%s", str(x_scaled.shape), str(x_scaled))
 
         if self._model_dump_path.suffix == ".pt":
-            if "_rnn_" in str(self._model_dump_path):
+            if "rnn" in str(self._model_dump_path):
                 a = torch.tensor(x_scaled, dtype=torch.float32).unsqueeze(1)
                 h0 = self._model.init_hidden(1)
                 y_scaled, _ = self._model(a, h0)
                 y_scaled = y_scaled.detach().numpy().reshape(-1, 1)
-            elif "_mlp_" in str(self._model_dump_path):
+            elif "mlp" in str(self._model_dump_path):
                 y_scaled = self._model(torch.tensor(x_scaled, dtype=torch.float32).T)
                 y_scaled = y_scaled.detach().numpy().reshape(-1, 1)
         else:
