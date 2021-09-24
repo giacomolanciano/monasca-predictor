@@ -275,7 +275,7 @@ class PredictorProcess:
                         # NOTE: if the table contains less rows than expected,
                         # then replicate the oldest measure to cover the
                         # difference.
-                        difference = table.shape[0] - expected_input_shape
+                        difference = expected_input_shape - table.shape[0]
                         new_row = table.iloc[0].copy()
                         new_row.name = pd.to_datetime(new_row.name) - timedelta(
                             minutes=1
