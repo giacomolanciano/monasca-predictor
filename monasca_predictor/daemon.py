@@ -266,15 +266,17 @@ class PredictorProcess:
                         # nodes. In that case, fill NaNs with the value of the
                         # previous sample and retain the expected number of
                         # (newest) samples only.
+                        log.debug("The pivot table has more rows than expected.")
+
                         table = table.fillna(method="ffill", axis=0).iloc[
                             -expected_input_shape:, :
                         ]
-
-                        log.debug("NaN-free pivot table:\n%s", str(table))
                     elif table.shape[0] < expected_input_shape:
                         # NOTE: if the table contains less rows than expected,
                         # then replicate the oldest measure to cover the
                         # difference.
+                        log.debug("The pivot table has fewer rows than expected.")
+
                         difference = expected_input_shape - table.shape[0]
                         new_row = table.iloc[0].copy()
                         new_row.name = pd.to_datetime(new_row.name) - timedelta(
@@ -283,8 +285,23 @@ class PredictorProcess:
                         table = pd.concat(
                             [pd.DataFrame(new_row).transpose()] * difference + [table]
                         )
+                    else:
+                        # NOTE: even though the table has the expected shape,
+                        # there could be the case that some columns exhibit
+                        # NaNs. This is caused either by some computing
+                        # instances being turned off at some point during the
+                        # time period, or by possible delays in Monasca
+                        # measurements persistence. In the latter case, we
+                        # assume the existence of a single NaN occurring at the
+                        # end of the sequence that, if left as is, would throw
+                        # off the calculations of the spatially-aggregated
+                        # values and possible post-processing steps that rely
+                        # on the last known size of the cluster. To overcome
+                        # this issue, we fill 1-sample gaps in the sequences,
+                        # using the value of the previous sample.
+                        log.debug("The pivot table has the expected number of rows.")
 
-                        log.debug("filled pivot table:\n%s", str(table))
+                        table.fillna(method="ffill", axis=0, limit=1, inplace=True)
 
                     # compute spatial statistics
                     table["count"] = table[raw_data_cols].count(axis=1)
