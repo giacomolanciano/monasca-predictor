@@ -1,0 +1,24 @@
+{
+    "description": "<p>Integrating with Monasca to provide OpenStack with predictive analytics (<a href=\"https://github.com/giacomolanciano/monasca-predictor\">https://github.com/giacomolanciano/monasca-predictor</a>).</p>",
+    "language": "eng",
+    "title": "monasca-predictor",
+    "license": {
+        "id": "Apache-2.0"
+    },
+    "creators": [
+        {
+            "orcid": "0000-0002-7431-8041",
+            "affiliation": "Scuola Normale Superiore, Italy",
+            "name": "Lanciano, Giacomo"
+        }
+    ],
+    "access_right": "open",
+    "related_identifiers": [
+        {
+            "scheme": "doi",
+            "identifier": "10.1145/3468737.3494104",
+            "relation": "isSupplementTo",
+            "resource_type": "publication-conferencepaper"
+        }
+    ]
+}
