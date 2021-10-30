@@ -15,6 +15,11 @@
     "access_right": "open",
     "related_identifiers": [
         {
+            "scheme": "url",
+            "identifier": "https://github.com/giacomolanciano/monasca-predictor",
+            "relation": "isSupplementTo"
+        },
+        {
             "scheme": "doi",
             "identifier": "10.1145/3468737.3494104",
             "relation": "isSupplementTo",
