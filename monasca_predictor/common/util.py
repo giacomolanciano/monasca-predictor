@@ -79,6 +79,13 @@ def initialize_logging(logger_name):
         if log_file is not None and not logging_config["disable_file_logging"]:
             # make sure the log directory is writable
             # NOTE: the entire directory needs to be writable so that rotation works
+            sys.stderr.write(f"{os.getuid()}\n")
+            sys.stderr.write(f"{log_file}\n")
+            sys.stderr.write(f"{os.access(log_file, os.R_OK)}\n")
+            sys.stderr.write(f"{os.access(log_file, os.W_OK)}\n")
+            sys.stderr.write(f"{os.path.dirname(log_file)}\n")
+            sys.stderr.write(f"{os.access(os.path.dirname(log_file), os.R_OK)}\n")
+            sys.stderr.write(f"{os.access(os.path.dirname(log_file), os.W_OK)}\n")
             if os.access(os.path.dirname(log_file), os.R_OK | os.W_OK):
                 if logging_config["enable_logrotate"]:
                     file_handler = logging.handlers.RotatingFileHandler(
