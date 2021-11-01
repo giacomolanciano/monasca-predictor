@@ -31,8 +31,8 @@ cd monasca-predictor
 make py37
 ```
 
-The `monasca-predictor` command can now be issued from within the newly created virtual env, that can be activated by
-running
+When installing from source, the `monasca-predictor` command can be issued from within an automatically created virtual
+env, that can be activated by running
 
 ```bash
 source .venv/py37/bin/activate
@@ -148,8 +148,9 @@ Main:
 
 ## Run
 
-Assuming you are within the expected virtual env (see [Installation](#installation)) and prepared a config file named
-`predictor.yaml` (see [Configuration](#configuration)), you can launch `monasca-predictor` by running
+Assuming you prepared a config file named `predictor.yaml` (see [Configuration](#configuration)) and, when installed
+from source, you are within the expected virtual env (see [Installation](#installation)), you can launch
+`monasca-predictor` by running
 
 ```bash
 monasca-predictor -f predictor.yaml
