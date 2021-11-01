@@ -10,15 +10,20 @@ For instance, `monasca-predictor` can be used to leverage on time-series forecas
 auto-scaling strategy. The following figure shows how this component can be integrated into a standard OpenStack
 elasticity control-loop to automatically resize a Senlin cluster of Nova instances:
 
-<p align="center"><img src="docs/img/pred-auto-scaling.png" alt="pred-auto-scaling" width="80%"/></p>
+<p align="center"><img src="https://github.com/giacomolanciano/monasca-predictor/raw/master/docs/img/pred-auto-scaling.png" alt="pred-auto-scaling" width="80%"/></p>
 
 In this case, depending on the future status of the system (as depicted by the relevant predictive analytics), one can
 configure Monasca alarms to trigger appropriate Senlin scaling actions to reconfigure the cluster.
 
 ## Installation
 
-This project is compatible with Python `3.7.*`. Assuming `venv` to be available on the system, run the following
-commands to install:
+This project is compatible with Python `3.7.*`. To install, run
+
+```bash
+pip install monasca-predictor
+```
+
+To install from source, assuming `venv` to be available on the system, run
 
 ```bash
 git clone https://github.com/giacomolanciano/monasca-predictor
