@@ -125,7 +125,7 @@ Main:
 
       # The amount of historical data to look at for a single prediction (in seconds,
       # depends on the underlying model)
-      lookback_period_seconds: 1200
+      lookback_period_seconds: ...
 
       # The standard type of forecasting model to use (only 'linear' is supported).
       # This value takes precedence over model_path.
@@ -143,7 +143,8 @@ Main:
 
 ## Run
 
-Assuming you are within the expected virtual env (see [Installation](#installation)) and prepared a config file named `predictor.yaml` (see [Configuration](#configuration)), you can launch `monasca-predictor` by running
+Assuming you are within the expected virtual env (see [Installation](#installation)) and prepared a config file named
+`predictor.yaml` (see [Configuration](#configuration)), you can launch `monasca-predictor` by running
 
 ```bash
 monasca-predictor -f predictor.yaml
