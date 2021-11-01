@@ -1,9 +1,12 @@
 DEFAULT_LOG_DIR=/var/log/monasca-predictor
 DEFAULT_VENV_DIR=.venv
 
-.PHONY: all log py37
+.PHONY: all build log py37
 
 all: py37
+
+build:
+	python3 -m build
 
 log: $(DEFAULT_LOG_DIR)/
 
