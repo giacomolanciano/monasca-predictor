@@ -1,4 +1,5 @@
 [![GitHub license](https://img.shields.io/github/license/giacomolanciano/monasca-predictor)](https://github.com/giacomolanciano/monasca-predictor/blob/master/LICENSE)
+[![PyPI version](https://badge.fury.io/py/monasca-predictor.svg)](https://pypi.org/project/monasca-predictor)
 [![DOI](https://zenodo.org/badge/343854707.svg)](https://zenodo.org/badge/latestdoi/343854707)
 
 # monasca-predictor
