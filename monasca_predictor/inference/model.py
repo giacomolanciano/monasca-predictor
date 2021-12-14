@@ -61,8 +61,6 @@ class Model:
             log.debug("Input is of type '%s', converting to 'numpy.ndarray'.", type(x))
             x = np.array(x)
 
-        x_length = len(x)
-
         # scaler expects 2D inputs
         if len(x.shape) == 1:
             x = x.reshape(-1, 1)
@@ -155,6 +153,8 @@ class LinearModel(Model):
     def __init__(self, prediction_offset):
         super().__init__()
         self._prediction_offset = prediction_offset
+
+        log.debug("Loaded model of type '%s'.", LinearRegression)
 
     def predict(self, x):
         if not isinstance(x, np.ndarray):
