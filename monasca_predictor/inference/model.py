@@ -4,6 +4,7 @@ import pathlib
 import numpy as np
 import tensorflow as tf
 import joblib
+import statsmodels.api as sm
 import torch
 import torch.nn as nn
 from sklearn.linear_model import LinearRegression
@@ -21,8 +22,10 @@ class Model:
     def load(self, model_dump, scaler_dump=None):
         self._model_dump_path = pathlib.Path(model_dump)
 
+        # Assuming tf.keras model
         if self._model_dump_path.suffix == ".h5":
             self._model = tf.keras.models.load_model(model_dump)
+        # Assuming pytorch model
         if self._model_dump_path.suffix == ".pt":
             # TODO: drop assumptions on underlying model.
             if "rnn" in str(self._model_dump_path):
@@ -35,8 +38,12 @@ class Model:
                 )
             self._model.load_state_dict(torch.load(model_dump))
             self._model.eval()
+        # Assuming sklearn model
         elif self._model_dump_path.suffix == ".joblib":
             self._model = joblib.load(model_dump)
+        # Assuming statsmodels model
+        elif self._model_dump_path.suffix == ".sm":
+            self._model = sm.load(model_dump)
         else:
             raise ValueError(
                 f"Unsupported model dump format '{self._model_dump_path.suffix}'."
@@ -56,7 +63,7 @@ class Model:
 
         log.debug("Loaded scaler of type '%s'.", type(self._scaler))
 
-    def predict(self, x):
+    def predict(self, x, steps=None):
         if not isinstance(x, np.ndarray):
             log.debug("Input is of type '%s', converting to 'numpy.ndarray'.", type(x))
             x = np.array(x)
@@ -67,8 +74,10 @@ class Model:
         x_scaled = self._scaler.transform(x)
 
         log.debug("x_scaled (shape=%s):\n%s", str(x_scaled.shape), str(x_scaled))
+        log.debug("prediction steps: %d", steps)
 
         if self._model_dump_path.suffix == ".pt":
+            # TODO: drop assumptions on underlying model input shape.
             if "rnn" in str(self._model_dump_path):
                 a = torch.tensor(x_scaled, dtype=torch.float32).unsqueeze(1)
                 h0 = self._model.init_hidden(1)
@@ -77,6 +86,8 @@ class Model:
             elif "mlp" in str(self._model_dump_path):
                 y_scaled = self._model(torch.tensor(x_scaled, dtype=torch.float32).T)
                 y_scaled = y_scaled.detach().numpy().reshape(-1, 1)
+        elif self._model_dump_path.suffix == ".sm":
+            y_scaled = self._model.apply(x_scaled).forecast(steps)[-1].reshape(-1, 1)
         else:
             # TODO: drop assumptions on underlying model input shape.
             # Currently assuming the underlying model is an LSTM expecting 3D
@@ -150,13 +161,11 @@ class Model:
 
 
 class LinearModel(Model):
-    def __init__(self, prediction_offset):
+    def __init__(self):
         super().__init__()
-        self._prediction_offset = prediction_offset
-
         log.debug("Loaded model of type '%s'.", LinearRegression)
 
-    def predict(self, x):
+    def predict(self, x, steps=None):
         if not isinstance(x, np.ndarray):
             log.debug("Input is of type '%s', converting to 'numpy.ndarray'.", type(x))
             x = np.array(x)
@@ -165,7 +174,7 @@ class LinearModel(Model):
         time_steps = np.arange(0, len(x))
         self._model = LinearRegression().fit(time_steps.reshape(-1, 1), x)
 
-        y = self._model.predict(np.array([[time_steps[-1] + self._prediction_offset]]))
+        y = self._model.predict(np.array([[time_steps[-1] + steps]]))
 
         log.debug("y (shape=%s):\n%s", str(y.shape), str(y))
 

@@ -222,10 +222,11 @@ class PredictorProcess:
 
                 # Feed predictor with retrieved measurements
                 model_type = prediction_config.get("model_type")
+                prediction_steps = (
+                    prediction_offset_seconds // time_aggregation_period_seconds
+                )
                 if model_type and model_type == "linear":
-                    model = inf_mod.LinearModel(
-                        prediction_offset_seconds / time_aggregation_period_seconds
-                    )
+                    model = inf_mod.LinearModel()
                 else:
                     model = inf_mod.Model()
                     model.load(
@@ -319,7 +320,9 @@ class PredictorProcess:
 
                     log.debug("predictor input:\n%s", str(predictor_input))
 
-                    prediction_value_raw = model.predict(predictor_input)
+                    prediction_value_raw = model.predict(
+                        predictor_input, prediction_steps
+                    )
                     node_count = table["count"][-1]
                     prediction_value = prediction_value_raw / node_count
 
@@ -360,7 +363,7 @@ class PredictorProcess:
                         # TODO: handle measurements coming from multiple input metrics.
                         # Currently assuming only one input metric is specified.
                         prediction_value = model.predict(
-                            instance_data[in_metric_list[0]].values
+                            instance_data[in_metric_list[0]].values, prediction_steps
                         )
 
                         last_datetime = instance_data.index[-1]
