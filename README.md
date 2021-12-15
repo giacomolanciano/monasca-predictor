@@ -18,7 +18,7 @@ configure Monasca alarms to trigger appropriate Senlin scaling actions to reconf
 
 ## Installation
 
-This project is compatible with Python `3.7.*`. To install, run
+This project is compatible with Python `3.7.*` and `3.8.*`. To install, run
 
 ```bash
 pip install monasca-predictor
@@ -29,14 +29,19 @@ To install from source, assuming `venv` to be available on the system, run
 ```bash
 git clone https://github.com/giacomolanciano/monasca-predictor
 cd monasca-predictor
-make py37
+
+make py37 # to run with Python 3.7.*
+# or
+make py38 # to run with Python 3.8.*
 ```
 
 When installing from source, the `monasca-predictor` command can be issued from within an automatically created virtual
 env, that can be activated by running
 
 ```bash
-source .venv/py37/bin/activate
+source .venv/py37/bin/activate # to run with Python 3.7.*
+# or
+source .venv/py38/bin/activate # to run with Python 3.8.*
 ```
 
 ## Configuration

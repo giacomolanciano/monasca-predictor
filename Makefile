@@ -14,6 +14,15 @@ $(DEFAULT_VENV_DIR)/py37/:
 	$@/bin/pip install -r test-requirements.txt
 	@echo "Run \`source $@/bin/activate\` to start the virtual env."
 
+py38: $(DEFAULT_VENV_DIR)/py38/
+
+$(DEFAULT_VENV_DIR)/py38/:
+	python3.8 -m venv $@
+	$@/bin/pip install -U pip
+	$@/bin/pip install -e .
+	$@/bin/pip install -r test-requirements.txt
+	@echo "Run \`source $@/bin/activate\` to start the virtual env."
+
 build:
 	python3 -m build
 
