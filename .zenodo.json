@@ -1,4 +1,5 @@
 {
+    "upload_type": "software",
     "description": "<p>Integrating with Monasca to provide OpenStack with predictive analytics (<a href=\"https://github.com/giacomolanciano/monasca-predictor\">https://github.com/giacomolanciano/monasca-predictor</a>).</p>",
     "language": "eng",
     "title": "monasca-predictor",
