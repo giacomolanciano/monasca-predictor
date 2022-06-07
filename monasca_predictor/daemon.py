@@ -25,6 +25,8 @@ prediction_config_list = []
 
 
 class PredictorProcess:
+    """Class defining the beahvior of the monasca-predictor daemon."""
+
     def __init__(self):
         self._api_endpoint = None
         self._forwarder_endpoint = None
@@ -35,11 +37,13 @@ class PredictorProcess:
         self.stop(0)
 
     def stop(self, exit_code):
+        """Clean exit for the daemon."""
         log.info("Stopping predictor run loop...")
         self.run_forever = False
         sys.exit(exit_code)
 
     def run(self, config):
+        """Main loop of the daemon."""
         # Gracefully exit on sigterm.
         signal.signal(signal.SIGTERM, self._handle_sigterm)
 
@@ -455,6 +459,7 @@ class PredictorProcess:
 
 
 def main():
+    """Arguments parsing and daemon startup."""
     options, args = util.get_parsed_args()
     predictor_config = PredictorConfig().get_config(["Main", "Api", "Logging"])
 

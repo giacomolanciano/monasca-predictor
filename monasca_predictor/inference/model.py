@@ -13,6 +13,8 @@ log = logging.getLogger(__name__)
 
 
 class Model:
+    """Base class for predictive models."""
+
     def __init__(self):
         self._model = None
         self._scaler = None
@@ -20,6 +22,7 @@ class Model:
         self._scaler_dump_path = None
 
     def load(self, model_dump, scaler_dump=None):
+        """Load predictive model dumps from disk."""
         self._model_dump_path = pathlib.Path(model_dump)
 
         # Assuming tf.keras model
@@ -64,6 +67,7 @@ class Model:
         log.debug("Loaded scaler of type '%s'.", type(self._scaler))
 
     def predict(self, x, steps=None):
+        """Return a prediction for a given input."""
         if not isinstance(x, np.ndarray):
             log.debug("Input is of type '%s', converting to 'numpy.ndarray'.", type(x))
             x = np.array(x)
@@ -115,6 +119,8 @@ class Model:
         return float(self._scaler.inverse_transform(y_scaled).flatten())
 
     class RNN(nn.Module):
+        """Class for Recurrent Neural Network-based forecasting."""
+
         def __init__(self, in_size, hidden_size, out_size, layers):
             super(Model.RNN, self).__init__()
             self.input_size = in_size
@@ -130,15 +136,17 @@ class Model:
             )
             self.lin = nn.Linear(self.hidden_size, self.output_size)
 
-        def forward(self, seq, hidden):
+        def forward(self, seq, hidden):  # pylint: disable=missing-function-docstring
             output, _ = self.rnn(seq, hidden)
             output = self.lin(output[-1:])
             return output, hidden
 
-        def init_hidden(self, batch_size):
+        def init_hidden(self, batch_size):  # pylint: disable=missing-function-docstring
             return torch.zeros(self.layers, batch_size, self.hidden_size)
 
     class MLP(nn.Module):
+        """Class for Multy Layer Perceptron-based forecasting."""
+
         def __init__(self, in_size: int, hidden_size: list, output_size: int):
             super(Model.MLP, self).__init__()
             self.input_size = in_size
@@ -153,7 +161,7 @@ class Model:
                 self.stack.append(nn.LeakyReLU())
             self.stack = nn.ModuleList(self.stack)
 
-        def forward(self, x):
+        def forward(self, x):  # pylint: disable=missing-function-docstring
             signal = x
             for idx, processing in enumerate(self.stack):
                 signal = processing(signal)
@@ -161,6 +169,8 @@ class Model:
 
 
 class LinearModel(Model):
+    """Class for Linear Regressin-based forecasting."""
+
     def __init__(self):
         super().__init__()
         log.debug("Loaded model of type '%s'.", LinearRegression)

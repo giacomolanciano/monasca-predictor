@@ -40,6 +40,7 @@ class MonascaAPI(object):
         statistics=None,
         aggregation_period_seconds=None,
     ):
+        """Retrieve measurements via Monasca API."""
 
         if not self._mon_client:
             self._mon_client = self._get_mon_client()

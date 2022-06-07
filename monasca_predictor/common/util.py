@@ -146,10 +146,12 @@ def initialize_logging(logger_name):
 
 
 def format_datetime_str(timestamp):
+    """Convert timestamp to default format."""
     return datetime.strftime(timestamp, DEFAULT_TIMESTAMP_FORMAT)
 
 
 def get_parsed_datetime(timestamp_str, time_zone=timezone.utc):
+    """Parse the timestamp contained in the given string."""
     for timestamp_format in SUPPORTED_TIMESTAMP_FORMAT_LIST:
         try:
             date_time = datetime.strptime(timestamp_str, timestamp_format)
@@ -160,10 +162,12 @@ def get_parsed_datetime(timestamp_str, time_zone=timezone.utc):
 
 
 def format_object_str(obj):
+    """Return a beautified JSON representation of an object."""
     return json.dumps(obj, indent=2)
 
 
 def get_parsed_args(prog=None):
+    """Parse daemon CLI arguments."""
     parser = argparse.ArgumentParser(prog=prog)
     parser.add_argument(
         "-c", "--clean", action="store_true", default=False, dest="clean"
